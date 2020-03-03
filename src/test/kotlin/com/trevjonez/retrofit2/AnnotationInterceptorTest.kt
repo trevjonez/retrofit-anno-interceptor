@@ -1,8 +1,11 @@
 package com.trevjonez.retrofit2
 
+import okhttp3.ConnectionSpec
 import okhttp3.Interceptor.Chain
 import okhttp3.OkHttpClient
 import okhttp3.Response
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -18,12 +21,13 @@ class AnnotationInterceptorTest {
     val httpClient by lazy {
         OkHttpClient.Builder()
             .addInterceptor(ReplaceBaseUrl.Interceptor())
+            .connectionSpecs(listOf(ConnectionSpec.CLEARTEXT))
             .build()
     }
 
     val retrofit by lazy {
         Retrofit.Builder()
-            .baseUrl("https://SomethingUseless.com/foo/bar/")
+            .baseUrl("http://a.b.c.d.q.w.e.r.t.y.com/foo/bar/")
             .client(httpClient)
             .addConverterFactory(ScalarsConverterFactory.create())
             .build()
@@ -31,32 +35,43 @@ class AnnotationInterceptorTest {
 
     val testService by lazy { retrofit.create<TestService>() }
 
+    val mockServer by lazy { MockWebServer() }
+
     @Test
     fun `base url gets replaced`() {
-        val error = assertThrows<IllegalArgumentException> {
-            testService.getNothing().execute()
-        }
+        mockServer.enqueue(MockResponse().apply {
+            setResponseCode(503)
+            setBody("boom")
+        })
+        mockServer.start(10753)
 
+        val result = testService.getNothing().execute()
+        assertEquals("Server Error", result.message())
+        assertEquals(503, result.code())
 
-        assertEquals("unexpected host: https://SomethingUseful.com/", error.message)
+        //validate the mock server got the request proving the interceptor did its job
+        val request = mockServer.takeRequest()
+        assertEquals("/foo/bar/nothing/", request.path)
     }
 }
 
 interface TestService {
 
-    @GET("/nothing")
-    @ReplaceBaseUrl("https://SomethingUseful.com/")
+    @GET("nothing/")
+    @ReplaceBaseUrl("127.0.0.1", 10753)
     fun getNothing(): Call<String>
 }
 
-annotation class ReplaceBaseUrl(val value: String) {
+annotation class ReplaceBaseUrl(val host: String, val port: Int = -1) {
 
     class Interceptor : AnnotationInterceptor<ReplaceBaseUrl>(ReplaceBaseUrl::class) {
         override fun intercept(chain: Chain, annotation: ReplaceBaseUrl): Response {
             val request = chain.request()
-            val newUrl = request.url()
+
+            val newUrl = request.url
                 .newBuilder()
-                .host(annotation.value)
+                .host(annotation.host)
+                .port(annotation.port)
                 .build()
 
             val newRequest = request.newBuilder()

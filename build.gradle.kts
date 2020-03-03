@@ -13,6 +13,7 @@ dependencies {
     api("com.squareup.retrofit2:retrofit:2.7.2")
 
     testImplementation("com.squareup.retrofit2:converter-scalars:2.7.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.4.0")
     testImplementation("org.junit.jupiter:junit-jupiter:5.6.0")
 }
 
